@@ -3,6 +3,8 @@
 **Use this template for all three assignments and modify if needed**
 
 **This template is a starting point, not a straitjacket. If a section doesn't fit your work, adapt it; if you think it should change for everyone, open a merge request or send me an email.**
+<!-- You might find it helpful to complete the assignments by following the instructions described in the local README.md file while taking notes in a seperate word processor document as 
+a "rough copy" then, once you've completed the README.md instructions, use the rough copy to fill in this report as a final draft to be submitted for grading. -->
 
 ---
 
@@ -48,13 +50,10 @@ Keep this section to 1-2 paragraphs.
 
 ## 1. Introduction
 
-### 1.1 Objective
+### Objective
 <!-- Describe the main objectives of this assignment -->
 
-### 1.2 Scope
-<!-- Define what you implemented and what you focused on -->
-
-### 1.3 Environment Setup
+### Environment Setup
 <!-- Briefly describe your development environment -->
 - **Operating System**: 
 - **Python Version**: 
@@ -63,13 +62,33 @@ Keep this section to 1-2 paragraphs.
 
 ---
 
-## 2. Task Implementation
+## 2. Task Overview
 
-<!-- Replace Task X, Y, Z with actual task numbers and names  -->
+<!-- Replace Task X, Y, Z with actual task numbers and names 
 
-### 2.1 Task X: [Task Name]
+It may be helpful to fill this out after completing each task, instead
+of trying to start your work in this section.
+-->
 
-#### 2.1.2 Implementation Details
+### Task X: [Task Name]
+
+#### Objective
+<!-- What was the goal of this task? -->
+
+#### Implementation Details
+<!-- Describe your implementation approach -->
+
+#### Challenges and Solutions
+<!-- What problems did you encounter and how did you solve them? -->
+
+#### Testing and Validation
+<!-- How did you test that your implementation works correctly? -->
+
+---
+
+### Task Y: [Task Name]
+
+#### Implementation Details
 <!-- Describe your implementation approach and include the corresponding screenshots -->
 
 **Key Components**:
@@ -86,10 +105,10 @@ def key_function():
     pass
 ```
 
-#### 2.1.3 Challenges and Solutions
+#### Challenges and Solutions
 <!-- What problems did you encounter and how did you solve them? -->
 
-#### 2.1.4 Testing and Validation
+#### Testing and Validation
 <!-- How did you test that your implementation works correctly? -->
 
 **Test Cases**
@@ -98,41 +117,40 @@ def key_function():
 
 ---
 
-### 2.2 Task Y: [Task Name]
+### Task Z: [Task Name]
 
-#### 2.2.1 Objective
-<!-- What was the goal of this task? -->
+#### Implementation Details
+<!-- Describe your implementation approach and include the corresponding screenshots -->
 
-#### 2.2.2 Implementation Details
-<!-- Describe your implementation approach -->
+**Key Components**:
+- Component 1: [Description]
+- Component 2: [Description]
+- Component 3: [Description]
 
-#### 2.2.3 Challenges and Solutions
+**Code Snippet** (Key Implementation):
+```python
+# Include only the most important code snippets
+# Do not paste entire files as the actual attack or security-fixed codes are included in the deliverables directory
+def key_function():
+    # Your implementation
+    pass
+```
+
+#### Challenges and Solutions
 <!-- What problems did you encounter and how did you solve them? -->
 
-#### 2.2.4 Testing and Validation
+#### Testing and Validation
 <!-- How did you test that your implementation works correctly? -->
 
----
-
-### 2.3 Task Z: [Task Name]
-
-#### 2.3.1 Objective
-<!-- What was the goal of this task? -->
-
-#### 2.3.2 Implementation Details
-<!-- Describe your implementation approach -->
-
-#### 2.3.3 Challenges and Solutions
-<!-- What problems did you encounter and how did you solve them? -->
-
-#### 2.3.4 Testing and Validation
-<!-- How did you test that your implementation works correctly? -->
+**Test Cases**
+**Evidence**:
+<!-- Include extra screenshots, logs, or other evidence -->
 
 ---
 
 ## 3. Security Analysis
 
-### 3.1 Vulnerability Assessment
+### Vulnerability Assessment
 <!-- For Assignment 1: Document vulnerabilities found in the base application -->
 <!-- For Assignment 2/3: Analyze security improvements made -->
 
@@ -143,62 +161,60 @@ def key_function():
 | N/A | N/A | N/A | N/A | N/A |
 | N/A | N/A | N/A | N/A | N/A |
 
-### 3.2 Security Improvements
+### Security Improvements - Before and After Comparison
 <!-- Document the security enhancements you implemented -->
 
-**Before vs. After Analysis**:
 - **Authentication**: [If applicable otherwise remove][How it improved]
 - **Authorization**: [If applicable otherwise remove][How it improved]  
 - **Data Protection**: [If applicable otherwise remove][How it improved]
 - **Communication Security**: [If applicable otherwise remove][How it improved]
 
-### 3.3 Threat Model
+### Threat Model
 <!-- Describe the threats your implementation addresses -->
 
 **Use the following security properties and threat actors in your threat modeling. You can add extra if needed.**
 
-**Threat Actors**:
-1. **Passive Network Attacker**: Can intercept but not modify traffic
-2. **Active Network Attacker**: Can intercept and modify traffic
-3. **Malicious Server Operator**: Has access to server and database
-4. **Compromised Client**: Attacker has access to user's device
+**Threat Actors Categories**:
+- **Passive Network Attacker**: Can intercept but not modify traffic
+- **Active Network Attacker**: Can intercept and modify traffic
+- **Malicious Server Operator**: Has access to server and database
+- **Compromised Client**: Attacker has access to user's device
 
-**Security Properties Achieved**:
-- [ ] Confidentiality
-- [ ] Integrity  
-- [ ] Authentication
-- [ ] Authorization
-- [ ] Non-repudiation
-- [ ] Perfect Forward Secrecy
-- [ ] Privacy
+**Security and Privacy Properties**:
+- Confidentiality
+- Integrity  
+- Authentication
+- Authorization
+- Non-repudiation
+- Perfect Forward Secrecy
+- Privacy
 
 ---
 
 ## 4. Attack Demonstrations
 
-### 4.1 Attack 1: [Attack Name]
+### Attack 1: [Attack Name]
 
-#### 4.1.1 Objective
+#### Objective
 <!-- What vulnerability does this attack exploit? -->
 
-#### 4.1.2 Attack Setup
+#### Attack Setup
 <!-- Describe your attack setup and tools used -->
 
 **Tools Used**:
 - Tool 1: [Purpose]
 - Tool 2: [Purpose]
 
-#### 4.1.3 Attack Execution
+#### Attack Execution
 <!-- Step-by-step description of the attack -->
 
-1. Step 1: [Description]
-2. Step 2: [Description]
-3. Step 3: [Description]
+Step 1: [Description]
+Step 2: [Description]
+Step 3: [Description]
 
-#### 4.1.4 Results and Evidence
-<!-- Show evidence of successful attack -->
+#### Results and Evidence
+<!-- Show evidence of successful attack, for example: -->
 
-**Evidence**:
 ![Attack Screenshot](images/attack_1_evidence.png)
 
 ```
@@ -206,18 +222,42 @@ Attack Output:
 [Include relevant logs or outputs]
 ```
 
-#### 4.1.5 Mitigation
+#### Mitigation
 <!-- How did you fix this vulnerability? -->
 
 ---
 
-### 4.2 Attack 2: [Attack Name]
+### Attack 2: [Attack Name]
 
-#### 4.2.1 Objective
-#### 4.2.2 Attack Setup  
-#### 4.2.3 Attack Execution
-#### 4.2.4 Results and Evidence
-#### 4.2.5 Mitigation
+#### Objective
+<!-- What vulnerability does this attack exploit? -->
+
+#### Attack Setup
+<!-- Describe your attack setup and tools used -->
+
+**Tools Used**:
+- Tool 1: [Purpose]
+- Tool 2: [Purpose]
+
+#### Attack Execution
+<!-- Step-by-step description of the attack -->
+
+Step 1: [Description]
+Step 2: [Description]
+Step 3: [Description]
+
+#### Results and Evidence
+<!-- Show evidence of successful attack, for example: -->
+
+![Attack Screenshot](images/attack_1_evidence.png)
+
+```
+Attack Output:
+[Include relevant logs or outputs]
+```
+
+#### Mitigation
+<!-- How did you fix this vulnerability? -->
 
 ---
 
@@ -234,17 +274,14 @@ Basic test results in terms of resources used in terms of hardware and time. Als
 
 ## 6. Lessons Learned
 
-### 6.1 Technical Insights
+### Technical Insights
 <!-- What did you learn about security implementations? -->
 
-1. **Insight 1**: [Description]
-2. **Insight 2**: [Description]
-.
-.
-.
-N. **Insight N**: [Description]
+- **Insight 1**: [Description]
+- **Insight 2**: [Description]
+- **Insight N**: [Description]
 
-### 6.2 Security Principles
+### Security Principles
 <!-- How do your implementations relate to fundamental security principles? -->
 
 **Applied Principles**:
@@ -257,10 +294,10 @@ N. **Insight N**: [Description]
 
 ## 7. Conclusion
 
-### 7.1 Summary of Achievements
+### Summary of Achievements
 <!-- Summarize what you accomplished -->
 
-### 7.2 Security and Privacy Posture Assessment
+### Security and Privacy Posture Assessment
 <!-- How secure is your final implementation? -->
 
 **Remaining Vulnerabilities**:
@@ -268,12 +305,14 @@ N. **Insight N**: [Description]
 - Vulnerability 2: [Description and justification]
 
 **Suggest an Attack**: In two lines mention a possible existing attack to your current version in abstract
+- Vulnerability 1: [Description]
+- Vulnerability 2: [Description]
 
-### 7.3 Future Improvements
+### Future Improvements
 <!-- What would you do if you had more time? -->
 
-1. **Improvement 1**: [Description]
-2. **Improvement 2**: [Description]
+**Improvement 1**: [Description]
+**Improvement 2**: [Description]
 
 ---
 
@@ -294,13 +333,13 @@ Include all sources you referenced, including:
 
 Before submitting, ensure you have:
 
-- [ ] **Complete Report**: All sections filled out with sufficient detail
-- [ ] **Evidence**: Screenshots, logs, and demonstrations included
-- [ ] **Code**: Well-named(based on task and whether it is an attack or a fix) and well-commented and organized in your GitHub repository deliverable directory of the corresponding assignment
-- [ ] **Tests**: Security and functionality tests implemented after fix
-- [ ] **GitHub Link**: Repository link included in report and Brightspace submission
-- [ ] **Academic Integrity**: All sources properly cited, work is your own
-- [ ] **AI Disclosure**: `GENAI.md` included in deliverables, disclosing any AI use
+1. **Complete Report**: All sections filled out with sufficient detail
+2. **Evidence**: Screenshots, logs, and demonstrations included
+3. **Code**: Well-named(based on task and whether it is an attack or a fix) and well-commented and organized in your GitHub repository deliverable directory of the corresponding assignment
+4. **Tests**: Security and functionality tests implemented after fix
+5. **GitHub Link**: Repository link included in report and Brightspace submission
+6. **Academic Integrity**: All sources properly cited, work is your own
+7. **AI Disclosure**: `GENAI.md` included in deliverables, disclosing any AI use
 
 ---
 
