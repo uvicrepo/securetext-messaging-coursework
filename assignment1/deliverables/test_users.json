@@ -1,0 +1,23 @@
+{
+    "Alice": {
+        "password": "2e0f3947c1498125294c2fa5d703ff2f27e2a54996276ea72f86efaa5ceed8d1",
+        "salt": "5dab1472f4a6adf8e196a49423528b48140e307c338df08328cd38db1518f258",
+        "created_at": "2026-06-14T11:38:21.034948",
+        "reset_question": "What is your favorite color?",
+        "reset_answer": "blue"
+    },
+    "Bob": {
+        "password": "99ba4088c8e8654290f570d699678f54e9aa91ec3c244ae06181bece8088abe5",
+        "salt": "692076d439ad472a1bfaf538bb1166480945e0b88b8035297aa3abc2d8cbbef8",
+        "created_at": "2026-06-14T11:38:42.696472",
+        "reset_question": "What is your favorite color?",
+        "reset_answer": "blue"
+    },
+    "Mallory": {
+        "password": "b9a54adfa20e5cd615059a247af0bed5c33787a95c79cc6e7fdfbee718fad5ed",
+        "salt": "77b5c1b5d4b9c5defc0bd06e4410add3ea153060c42d49f7ec61810aa7a21068",
+        "created_at": "2026-06-14T11:40:13.470043",
+        "reset_question": "What is your favorite color?",
+        "reset_answer": "blue"
+    }
+}
