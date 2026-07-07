@@ -13,6 +13,7 @@ def intercept(data):
     try:
         msg = json.loads(data)
         if msg.get('command') == 'SEND_MESSAGE':
+            #region call : forge()
             forged_message, forged_mac = forge(ORIGINAL, msg['mac'], SUFFIX, KEY_LEN)
             msg['content'] = forged_message.decode('latin-1')
             msg['mac'] = forged_mac

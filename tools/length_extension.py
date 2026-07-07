@@ -92,7 +92,7 @@ def _sha256_compress(state, block):
 
     return [(state[i] + v) & _MASK for i, v in enumerate((a, b, c, d, e, f, g, h))]
 
-
+#region _sha_padding()
 def _sha_padding(msg_len):
     """The 1-bit, zeros, and 64-bit BIG-endian length SHA-256 appends to a msg_len-byte message."""
     pad = b"\x80"
@@ -113,6 +113,7 @@ def sha256_from_state(state, tail, prior_len_bytes):
     total_len = prior_len_bytes + len(tail)
     msg += _sha_padding(total_len)
     for off in range(0, len(msg), 64):
+        #region _sha256_compress()
         state = _sha256_compress(state, msg[off:off + 64])
     return "".join(struct.pack(">I", word).hex() for word in state)
 
@@ -129,7 +130,7 @@ def sha256_mac(key, message):
 # ---------------------------------------------------------------------------
 # The attack.
 # ---------------------------------------------------------------------------
-
+# region forge()
 def forge(original_message, original_mac, suffix, key_len):
     """
     Given MAC = SHA-256(key || original_message), produce (forged_message, forged_mac)
@@ -142,7 +143,7 @@ def forge(original_message, original_mac, suffix, key_len):
         original_message = original_message.encode()
     if isinstance(suffix, str):
         suffix = suffix.encode()
-
+    #region forge() -> state
     # Recover the hash state the original MAC left off in (8 big-endian 32-bit words).
     state = list(struct.unpack(">8I", bytes.fromhex(original_mac)))
 

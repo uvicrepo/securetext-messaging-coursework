@@ -19,6 +19,7 @@ import os
 import sys
 import time
 from datetime import datetime
+import hashlib
 
 class SecureTextServer:
     def __init__(self, host='localhost', port=12345):
@@ -47,37 +48,73 @@ class SecureTextServer:
         except IOError as e:
             print(f"Error saving users: {e}")
     
+# region T2:Part A 
+    # def create_account(self, username, password):
+    #     """Create new user account - stores password in PLAINTEXT!"""
+    #     if username in self.users:
+    #         return False, "Username already exists"
+        
+    #     # SECURITY VULNERABILITY: Storing password in plaintext!
+    #     self.users[username] = {
+    #         'password': password,  # PLAINTEXT PASSWORD!
+    #         'created_at': datetime.now().isoformat(),
+    #         'reset_question': 'What is your favorite color?',
+    #         'reset_answer': 'blue'  # Default for simplicity
+    #     }
+    #     self.save_users()
+    #     return True, "Account created successfully"
+        
+    # Updated to include password reset question and answer for T2:Part A
     def create_account(self, username, password):
-        """Create new user account - stores password in PLAINTEXT!"""
+        """Create new user account - hashes password using HSA-256 [1]"""
         if username in self.users:
             return False, "Username already exists"
         
-        # SECURITY VULNERABILITY: Storing password in plaintext!
+        create_pswd_hash = hashlib.sha256(password.encode()).hexdigest()
+
         self.users[username] = {
-            'password': password,  # PLAINTEXT PASSWORD!
+            'password': create_pswd_hash,  # SHA256 hashed password
             'created_at': datetime.now().isoformat(),
             'reset_question': 'What is your favorite color?',
-            'reset_answer': 'blue'  # Default for simplicity
+            'reset_answer': 'blue'  # Default for simplicity <- INSECURE!
         }
         self.save_users()
         return True, "Account created successfully"
-    
+
+
+    # def authenticate(self, username, password):
+    #     """Authenticate user with plaintext password comparison"""
+    #     if username not in self.users:
+    #         return False, "Username not found"
+        
+    #     # SECURITY VULNERABILITY: Plaintext password comparison!
+    #     if self.users[username]['password'] == password:
+    #         return True, "Authentication successful"
+    #     else:
+    #         return False, "Invalid password"
+
+    # Upadted to include password reset question and answer for T2:Part A
     def authenticate(self, username, password):
-        """Authenticate user with plaintext password comparison"""
+        """Authenticate user with hashed password comparison"""
         if username not in self.users:
             return False, "Username not found"
         
+        compare_pswd_hash = hashlib.sha256(password.encode()).hexdigest()
+
         # SECURITY VULNERABILITY: Plaintext password comparison!
-        if self.users[username]['password'] == password:
+        if self.users[username]['password'] == compare_pswd_hash:
             return True, "Authentication successful"
         else:
             return False, "Invalid password"
     
+# endregion T2:Part A
+
+# region Obvious 2
     def reset_password(self, username, new_password):
         """Basic password reset - just requires existing username"""
         if username not in self.users:
             return False, "Username not found"
-        
+        #region Obvious 1
         # SECURITY VULNERABILITY: No proper verification for password reset!
         self.users[username]['password'] = new_password
         self.save_users()
