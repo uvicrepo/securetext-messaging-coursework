@@ -205,3 +205,9 @@ cython_debug/
 ECE572_venv/
 assignment1/ECE572_hmac_bonusVideo.mp4
 assignment1/deliverables/V00759375_Assignment1_Report.pdf
+
+users.json
+security.log
+.securetext_challenge_key_*
+__pycache__/
+*.pyc
