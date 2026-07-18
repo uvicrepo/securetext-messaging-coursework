@@ -10,6 +10,16 @@ Features:
 - User login
 - Send/receive messages via TCP sockets
 - Basic password reset functionality
+
+References:
+[1] PyOTP: https://pypi.org/project/pyotp/
+[2] https://github.com/OWASP/CheatSheetSeries/blob/master/cheatsheets/Authentication_Cheat_Sheet.md
+[3] https://pycryptodome.readthedocs.io/en/latest/src/cipher/aes.html
+[4] https://www.rfc-editor.org/rfc/rfc6238 (Section 1.2)
+[5] https://github.com/google/google-authenticator/wiki/Key-Uri-Format
+[6] https://pyauth.github.io/pyotp/#quick-overview-of-using-one-time-passwords-on-your-phone
+[7] https://pypi.org/project/qrcode/
+
 """
 
 from email import message
@@ -23,10 +33,45 @@ from datetime import datetime
 import hashlib
 import queue
 import hmac
+import pyotp
+from Crypto.Cipher import AES #[3]
+import qrcode
+
 
 ITER = 600000 
-
 KEY = b'securetext_key'  # Key for HMAC - This is unsafe and should be securely generated and stored in a real application.
+TOTP_KEY = bytes.fromhex('9b1f3c7a2e5d8041f6a9c3b7e0d24158a7c6f0e3b9d5a1c48f27e6b0d3a95c17')  # AES-256 key, same caveat as KEY.
+# SHA1: RFC 6238 base algorithm; most authenticator apps ignore the otpauth "algorithm" param and assume it.
+#region: TOTP_DIGEST
+TOTP_DIGEST = hashlib.sha1 #[4,5]
+TOTP_MAX_ATTEMPTS = 2 # T4.C rate limiting threshold
+TOTP_LOCKOUT_SECONDS = 30 # short for testing; increase for real use
+
+#region: encrypt_totp_secret
+def encrypt_totp_secret(secret):
+    cipher = AES.new(TOTP_KEY, AES.MODE_GCM)
+    ciphertext, tag = cipher.encrypt_and_digest(secret.encode())
+    return (bytes(cipher.nonce) + bytes(tag) + bytes(ciphertext)).hex()
+
+def decrypt_totp_secret(encrypted_secret):
+    raw = bytes.fromhex(encrypted_secret)
+    nonce, tag, ciphertext = raw[:16], raw[16:32], raw[32:]
+    cipher = AES.new(TOTP_KEY, AES.MODE_GCM, nonce=nonce)
+    return cipher.decrypt_and_verify(ciphertext, tag).decode()
+
+#region: verify_totp
+def verify_totp(secret, totp_input):
+    totp = pyotp.TOTP(secret, digest = TOTP_DIGEST)
+    if totp.verify(totp_input, valid_window=1):  # Allow for a 1-step window to account for clock skew, RFC 6238 Section 5.2
+        return True
+    else:
+        time.sleep(10)
+        print(f"[TOTP] VERIFICATION FAILED — Invalid TOTP code")
+        return False
+#region: generate_totp_secret
+def generate_totp_secret():
+    """Generate a TOTP secret key."""
+    return pyotp.random_base32()
 
 def parse_command_string(content):
     """Parse CMD=VALUE&KEY=VALUE format into a dict."""
@@ -34,7 +79,7 @@ def parse_command_string(content):
 
 def load_key():
     return KEY
-#region HMAC Update
+
 # Updated next two functions to hmac-based MAC to prevent length extension attack. SHA-256(k_outer || SHA-256(k_inner || message))
 def compute_mac(key, message):
     return hmac.new(key, message.encode('latin-1'), hashlib.sha256).hexdigest()
@@ -76,6 +121,7 @@ class SecureTextServer:
         self.active_connections = {}  # username -> connection
         self.server_socket = None
         self.key = load_key()
+        self.totp_attempts = {}  # username -> {'count': int, 'locked_until': epoch timestamp}
         
     def load_users(self):
         """Load users from JSON file or create empty dict if file doesn't exist"""
@@ -95,32 +141,50 @@ class SecureTextServer:
         except IOError as e:
             print(f"Error saving users: {e}")
     
-# region T2.B create
     def create_account(self, username, password):
         if username in self.users:
-            return False, "Username already exists"
-        
+            return False, "Username already exists", None
+
         salt, password_hash = hash_password(password)
+        totp_secret = generate_totp_secret()
+        encrypted_secret = encrypt_totp_secret(totp_secret)
 
         self.users[username] = {
             'password': password_hash,
             'salt': salt,
+            'totp_secret': encrypted_secret,
             'created_at': datetime.now().isoformat(),
             'reset_question': 'What is your favorite color?',
             'reset_answer': 'blue'  # Default for simplicity <- INSECURE!
         }
         self.save_users()
-        return True, "Account created successfully"
+        return True, "Account created successfully", totp_secret
 
-    def authenticate(self, username, password):
-        """Authenticate user with hashed password comparison"""
+    #region authenticate
+    # Implementing TOTP [1], and OWASP recommended response [2]
+    def authenticate(self, username, password, totp_input):
         if username not in self.users:
-            return False, "Username not found"
+            return False, "Username or Password is Incorrect"
 
-        if verify_password(password, self.users[username]['salt'], self.users[username]['password']):
-            return True, "Authentication successful"
+        now = time.time()
+        attempt = self.totp_attempts.get(username)
+        if attempt and attempt['locked_until'] > now:
+            return False, "Too many failed attempts. Try again later."
+
+        if not verify_password(password, self.users[username]['salt'], self.users[username]['password']):
+            return False, "Username or Password is Incorrect"  # FIX: was inverted, blocked all correct logins.
+
+        totp_secret = decrypt_totp_secret(self.users[username]['totp_secret'])
+        if verify_totp(totp_secret, totp_input):
+            self.totp_attempts.pop(username, None)
+            return True, "Login successful"
         else:
-            return False, "Invalid password"
+            attempt = self.totp_attempts.setdefault(username, {'count': 0, 'locked_until': 0})
+            attempt['count'] += 1
+            if attempt['count'] >= TOTP_MAX_ATTEMPTS:
+                attempt['locked_until'] = now + TOTP_LOCKOUT_SECONDS
+                attempt['count'] = 0
+            return False, "Username or Password is Incorrect"
     
     def reset_password(self, username, new_password):
         """Basic password reset - just requires existing username"""
@@ -150,19 +214,24 @@ class SecureTextServer:
                     if command == 'CREATE_ACCOUNT':
                         username = message.get('username')
                         password = message.get('password')
-                        success, msg = self.create_account(username, password)
-                        response = {'status': 'success' if success else 'error', 'message': msg}
+                        success, msg, totp_secret = self.create_account(username, password)
+                        response = {'status': 'success' if success else 'error', 
+                                    'message': msg,
+                                    'totp_secret': totp_secret if success else None}# Send TOTP secret to client for setup
+                        
                         
                     elif command == 'LOGIN':
                         username = message.get('username')
                         password = message.get('password')
-                        success, msg = self.authenticate(username, password)
+                        # Implementing TOTP [1]
+                        totp_input = message.get('totp_input')
+                        totp_actual = message.get('totp_actual')
+                        success, msg = self.authenticate(username, password, totp_input)
                         if success:
                             current_user = username
                             self.active_connections[username] = conn
                         response = {'status': 'success' if success else 'error', 'message': msg}
 
-                    #region T3.B.1    
                     elif command == 'SEND_MESSAGE':
                         if not current_user:
                             response = {'status': 'error', 'message': 'Not logged in'}
@@ -175,7 +244,6 @@ class SecureTextServer:
                                 response = {'status': 'error', 'message': 'Message integrity check failed'}
 
                             # Send message to recipient if they're online
-                            #region T3.B.1
                             elif recipient in self.active_connections:
                                 msg_data = {
                                     'type': 'MESSAGE',
@@ -257,7 +325,6 @@ class SecureTextServer:
                 self.server_socket.close()
 
 # region CLIENT
-#region T3.B.1
 class SecureTextClient:
     def __init__(self, host='localhost', port=12345):
         self.host = host
@@ -269,7 +336,6 @@ class SecureTextClient:
         self.response_queue = queue.Queue()
         self.key = load_key()
         
-    # Changed next methods to avoid race condition and communication hanging after message is sent.
     def connect(self):
         """Connect to the server"""
         try:
@@ -282,7 +348,7 @@ class SecureTextClient:
         except Exception as e:
             print(f"Connection error: {e}")
             return False
-    #region T3.B.1
+
     def listen_for_messages(self):
         """Listen for incoming messages in a separate thread"""
         while self.running:
@@ -317,39 +383,49 @@ class SecureTextClient:
             print(f"Communication error: {e}")
             return {'status': 'error', 'message': 'Communication failed'}
         
-    # region T2.B create
     def create_account(self):
         """Create a new account"""
         print("\n=== Create Account ===")
-        # SECURITY VULNERABILITY: No username validation !!!
         username = input("Enter username: ").strip()
-        salt, password = hash_password(input("Enter password: ").strip())
-        
+        password = input("Enter password: ").strip()
+
         if not username or not password:
             print("Username and password cannot be empty!")
             return
-        
+
         command = {
             'command': 'CREATE_ACCOUNT',
             'username': username,
-            'salt': salt,
             'password': password
         }
-        
+
         response = self.send_command(command)
         print(f"{response['message']}")
+
+        #region QRCode generation [7]
+        if response['status'] == 'success':
+            secret = response['totp_secret']
+            uri = pyotp.TOTP(secret, digest=TOTP_DIGEST).provisioning_uri(name=username, issuer_name="SecureText")
+            print(f"[TOTP] Scan this QR code with your authenticator app (or enter the secret manually: {secret})")
+            qr = qrcode.QRCode(border=1) #change this first if QR looks weird
+            qr.add_data(uri)
+            qr.make(fit=True)
+            qr.print_ascii(invert=True)
     
-    # SECURITY VULNERABILITY: sends password in plain text !!!
+    #region login/generate
     def login(self):
         """Login to the system"""
         print("\n=== Login ===")
+        
         username = input("Enter username: ").strip()
         password =input("Enter password: ").strip()
+        totp_input = input("Enter TOTP code: ").strip()
         
         command = {
             'command': 'LOGIN',
             'username': username,
-            'password': password
+            'password': password,
+            'totp_input': totp_input
         }
         
         response = self.send_command(command)
@@ -427,7 +503,7 @@ class SecureTextClient:
         """Main client loop"""
         if not self.connect():
             return
-        
+        #region Menu
         print("=== SecureText Messenger (Insecure Version) ===")
         print("WARNING: This is an intentionally insecure implementation for educational purposes!")
         
@@ -441,6 +517,7 @@ class SecureTextClient:
                 
                 if choice == '1':
                     self.create_account()
+                    #region T4.A generate totp
                 elif choice == '2':
                     self.login()
                 elif choice == '3':
