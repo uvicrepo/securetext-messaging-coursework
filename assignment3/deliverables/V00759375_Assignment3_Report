@@ -1,0 +1,391 @@
+# ECE 572 Assignment 3 Report
+
+---
+
+**Course**: ECE 572; Summer 2026
+**Instructor**: Dr. Ardeshir Shojaeinasab
+**Student Name**: Brandon Rogers  
+**Student ID**: V00759375  
+**Assignment**: Assignment 3  
+**Date**: 2026-08-04  
+**GitHub Repository**: https://github.com/uvicrepo/ECE572_SecureText_brandon
+
+---
+
+## Executive Summary
+
+This assignment extended SecureText with end-to-end encryption and time-based session management. Messages are now protected using an ephemeral, per-session ECDH key exchange on the P-256 curve (a two-ephemeral, zero-static pairwise key establishment scheme) [5], with HKDF-SHA256 deriving a 256-bit AES key from each pair's shared secret [3]. That key encrypts message content with AES-256-GCM before it ever reaches the server, so the server relays only ciphertext and public keys and has no way to recover message content, satisfying confidentiality and giving GCM's authentication tag built-in tamper detection on top of the existing HMAC layer.
+
+Session management was extended with an automatic 30-minute inactivity timeout, a proactive 5-minute warning pushed to idle clients, forced re-authentication on expiry, and cleanup of session-specific key material on both timeout and manual logout. Because a new ECDH key pair is generated on every login and discarded on session end, compromise of one session's derived key does not expose messages from a different session, providing forward secrecy at the session level. The implementation was validated through direct testing between two users: matching independently-derived shared keys, successful encryption/decryption with correct MAC verification, confirmed nonce uniqueness across identical plaintext, tamper detection on corrupted ciphertext, and a standalone script confirming an old session's key cannot decrypt a new session's messages.
+
+---
+
+## Table of Contents
+
+1. [Introduction](#introduction)
+2. [Task Implementation](#task-implementation)
+   - [Task 7]ECDH Key Exchange (P-256, HKDF-SHA256 shared-key derivation)
+   - [Task 8]Authenticated Encryption (AES-256-GCM end-to-end; the server only routes ciphertext)
+   - [Task 9]Session Management (30-minute expiry, secure key cleanup, forward secrecy)
+3. [Security Analysis](#security-analysis)
+4. [Attack Demonstrations](#attack-demonstrations)
+5. [Performance Evaluation](#performance-evaluation)
+6. [Lessons Learned](#lessons-learned)
+7. [Conclusion](#conclusion)
+8. [References](#references)
+
+---
+
+## 1. Introduction
+
+### 1.1 Objective
+<!-- Describe the main objectives of this assignment -->
+
+### 1.2 Scope
+<!-- Define what you implemented and what you focused on -->
+
+### 1.3 Environment Setup
+<!-- Briefly describe your development environment -->
+- **Operating System**: 
+- **Python Version**: 
+- **Key Libraries Used**: 
+- **Development Tools**: 
+
+---
+
+## 2. Task Implementation
+
+<!-- Replace Task X, Y, Z with actual task numbers and names  -->
+
+### 2.1 Task 7: ECDH Key Exchange (P-256, HKDF-SHA256 shared-key derivation)
+
+#### 2.1.2 Implementation Details
+
+ECDH key exchange was implemented using Python's cryptography library with the P-256 curve. Each client generates a new ephemeral key pair the moment a user logs in, rather than using a long-term key tied to the account. The public half of that key pair is sent to the server and stored in an in-memory dictionary keyed by username; the private key never leaves the client. When one user (e.g. Alice) wants to message another (e.g. Bob), her client requests Bob's public key from the server, performs the ECDH scalar multiplication locally to get a raw shared secret, and passes that secret through HKDF-SHA256 to derive a 32-byte AES key. Because the server only ever holds public keys, it has no way to compute or reconstruct this shared secret itself.
+
+**Key Components**:
+- Component 1: Ephemeral ECDH key pair (P-256)- A fresh key pair is generated client-side on every login (generate_ecdh_keypair), not reused across sessions.
+- Component 2: Public key exchange via server - The server stores and relays public keys only (PUBLISH_KEY`/`GET_KEY); it never receives a private key or a derived secret.
+- Component 3: HKDF-SHA256 derivation - get_shared_key runs the raw ECDH output through HKDF-SHA256 to produce a 32-byte symmetric key, rather than using the raw shared secret directly.
+
+**Code Snippet** (Key Implementation):
+```python
+    def generate_ecdh_keypair(self):
+        self.ecdh_private_key = ec.generate_private_key(ECDH_CURVE)
+        public_key = self.ecdh_private_key.public_key()
+        self.ecdh_public_pem = public_key.public_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PublicFormat.SubjectPublicKeyInfo
+        ).decode('utf-8')
+        self.session_keys = {}
+
+        print(f"Generated new P-256 key pair for {self.username}")
+        response = self.send_command({'command': 'PUBLISH_KEY', 'public_key': self.ecdh_public_pem})
+        print(f"ECDH {response['message']}")
+
+    def get_shared_key(self, peer_username):
+        if peer_username in self.session_keys:
+            return self.session_keys[peer_username]
+
+        response = self.send_command({'command': 'GET_KEY', 'username': peer_username})
+        if response['status'] != 'success':
+            print(f"ECDH {response['message']}")
+            return None
+
+        peer_public_key = serialization.load_pem_public_key(response['public_key'].encode('utf-8'))
+        shared_secret = self.ecdh_private_key.exchange(ec.ECDH(), peer_public_key) # type: ignore
+
+        derived_key = HKDF(
+            algorithm=hashes.SHA256(),
+            length=32,
+            salt=None,
+            info=HKDF_INFO
+        ).derive(shared_secret)
+
+        self.session_keys[peer_username] = derived_key
+        print(f"[ECDH] Derived shared session key with {peer_username}: {derived_key.hex()}")
+        return derived_key
+```
+
+#### 2.1.3 Challenges and Solutions
+
+Deriving the key on demand (rather than at login) meant a peer's key might not exist yet on the server. get_shared_key handles this by checking the server response status and failing gracefully rather than crashing, printing a clear error if no public key is on file for the peer.
+
+#### 2.1.4 Testing and Validation
+<!-- How did you test that your implementation works correctly? -->
+
+**Test Cases**
+**Evidence**:
+<!-- Include extra screenshots, logs, or other evidence -->
+Shows test for deriving shared key after user login:
+![alt text](image.png)
+
+Demonstrating the shared key exchange between two users:
+![alt text](image-1.png)
+
+
+---
+
+### 2.2 Task 8: Authenticated Encryption (AES-256-GCM end-to-end; the server only routes ciphertext)
+
+#### 2.2.1 Objective
+
+Ensure messages sent between users are confidential and tamper-evident end-to-end, using the shared key derived in Task 7, such that the server only ever handles ciphertext and cannot read message content even if its database or memory were inspected.
+
+#### 2.2.2 Implementation Details
+
+Message encryption uses AES-256-GCM via the cryptography library's AESGCM class, keyed with the 32-byte session key from get_shared_key. In send_message, the client generates a fresh random 12-byte nonce with os.urandom(12) for every message, encrypts the plaintext, and concatenates the nonce and ciphertext (which includes GCM's authentication tag) into a single hex string sent to the server as the message content. The existing HMAC (compute_mac) is computed over this encrypted content rather than the plaintext, so message integrity checking still applies to what's actually transmitted. On the receiving side, listen_for_messages derives the same shared key with the sender, splits the received hex back into nonce and ciphertext, and calls AESGCM(shared_key).decrypt to recover the plaintext. No server-side changes were needed for encryption itself the server already only relayed whatever string was in content; it just now relays ciphertext instead of plaintext.
+
+#### 2.2.3 Challenges and Solutions
+
+Since a fresh nonce is generated per message, sending the same plaintext twice produces different ciphertext each time this was confirmed by temporarily printing the encrypted content value for two identical messages and comparing the hex output. Decryption failures (e.g. from a tampered or corrupted ciphertext) are caught and surfaced to the user as "DECRYPTION FAILED" rather than crashing the client.
+
+#### 2.2.4 Testing and Validation
+
+1. Alice sends Bob a message; Bob's console shows the correctly decrypted plaintext with a VALID MAC status.
+2. The same plaintext message sent twice produces two different ciphertext strings (nonce uniqueness).
+3. The server's own view of the message (content field) is inspected and shown to be an undecipherable hex blob, confirming the server cannot read message content.
+4. A manually corrupted ciphertext fails to decrypt, demonstrating GCM's built-in tamper detection.
+
+Shows MAC key validation when message is sent:
+![alt text](image-2.png)
+
+---
+
+### 2.3 Task 9:  Session Management (30-minute expiry, secure key cleanup, forward secrecy)
+
+#### 2.3.1 Objective
+
+Automatically expire a user's session after a period of inactivity, warn the user before that happens, force re-authentication once expired, and securely clear session-specific cryptographic material (the ECDH private key and derived shared keys) so it cannot be reused or recovered after expiry or logout.
+
+#### 2.3.2 Implementation Details
+
+The server tracks a last-activity timestamp per logged-in user in self.last_activity. A background thread (session_monitor), started alongside the main server loop, checks every 5 seconds whether any active user has crossed the warning threshold or the full timeout, and pushes a message directly over that user's existing socket connection without waiting for the client to send a command. This is what allows the warning and expiry to appear on their own while a user is idle, rather than only being visible the next time they happen to interact with the menu. On expiry, the server also removes the user's entry from active_connections, session_type, session_action_count, last_activity, and public_keys, and clears them from warned_users. On the client side, receiving a session-expired push clears self.logged_in, self.ecdh_private_key, and self.session_keys, so the next login is forced to generate an entirely new ECDH key pair rather than reusing the old one. Manual logout (menu option 3) was updated to perform the same cleanup on both sides, so a user does not need to wait for a timeout for their keys to be cleared.
+
+#### 2.3.3 Challenges and Solutions
+
+The first implementation checked session status and calculated the warning only when the client explicitly requested it (a "Session Status" menu option), which meant the warning would never appear unless the user happened to check at the right moment, and in one case produced two contradictory remaining-time values in a single response because the activity timestamp was being reset by the status check itself before the warning was calculated from it. This was resolved by moving to the background thread approach described above, so warnings and expiry are pushed proactively and are not dependent on the client polling, and by making sure the status check itself does not count as activity that resets the timer.
+
+#### 2.3.4 Testing and Validation
+
+1. Checking session status immediately after login shows nearly the full remaining time.
+2. Leaving a session idle without any interaction results in an unprompted warning message appearing at the configured warning threshold.
+3. Continuing to leave the session idle past the full timeout results in an unprompted expiration message, after which any further action forces the user back to the login menu.
+4. Logging back in after expiry generates a new ECDH key pair, confirmed by comparing the full derived shared key with a peer before and after expiry.
+5. Logging out manually and logging back in also produces a new derived shared key, confirming cleanup is not limited to timeout-based expiry.
+6. A shared key captured from an earlier session cannot decrypt ciphertext from a later session (checked with a standalone script), demonstrating forward secrecy from the key rotation described above.
+
+Testing forward secrecy with timeout, first key/message:
+![alt text](image-3.png)
+
+Inactivity warning and auto-logout:
+![alt text](image-4.png)
+
+Logging back in requires a new shared key:
+![alt text](image-5.png)
+
+---
+
+## 3. Security Analysis
+
+### 3.1 Vulnerability Assessment
+<!-- For Assignment 1: Document vulnerabilities found in the base application -->
+<!-- For Assignment 2/3: Analyze security improvements made -->
+Vulnerabilities in the base application were identified and addressed in the Assignment 1 report; this assignment builds on the authentication/session hardening from Assignment 2.
+
+### 3.2 Security Improvements
+**Before vs. After Analysis**:
+ 
+- **Data Protection**: Message content was previously sent as plaintext strings between client and server; it is now encrypted client-side with AES-256-GCM before transmission, using a key the server never has access to.
+- **Communication Security**: The server previously had full visibility into message content in transit and could be inspected directly for that content; it now only ever handles ciphertext, and key material needed to decrypt it exists only on the two communicating clients.
+
+### 3.3 Threat Model
+**Threat Actors**:
+1. **Passive Network Attacker**: Can intercept but not modify traffic
+2. **Active Network Attacker**: Can intercept and modify traffic
+3. **Malicious Server Operator**: Has access to server and database
+4. **Compromised Client**: Attacker has access to user's device
+
+- **Passive Network Attacker**: Sees only ciphertext and public keys on the wire; cannot recover message content or derive session keys.
+- **Active Network Attacker**: Can inject or modify traffic, but tampering with ciphertext is detected by AES-GCM's authentication tag on decryption.
+- **Malicious Server Operator**: Has access to the server process and its in-memory/stored data, but only ever holds public keys and ciphertext, never a private key or derived shared secret.
+- **Compromised Client**: If a client's current session is compromised while active, session-specific keys are exposed, but past sessions' keys are not recoverable since a new ECDH key pair is generated on every login and old keys are not persisted.
+
+**Security Properties Achieved**:
+- [x] Confidentiality
+- [x] Integrity  
+- [x] Authentication
+- [x] Authorization
+- [ ] Non-repudiation
+- [x] Perfect Forward Secrecy
+- [ ] Privacy
+
+---
+
+## 4. Attack Demonstrations
+
+### 4.1 Attack 1: Confidentiality Bypass Attempt
+
+#### 4.1.1 Objective
+
+Determine whether an operator with full access to the server process and its data can read message content in transit or at rest.
+
+#### 4.1.2 Attack Setup
+
+No special tools required. The attack uses direct inspection of what the server actually holds: the content field relayed in SEND_MESSAGE, and the public_keys dictionary.
+
+#### 4.1.3 Attack Execution
+<!-- Step-by-step description of the attack -->
+
+1. Alice sends Bob a message while the server is running.
+2. Inspect the content field the server relays as part of the message payload.
+3. Inspect self.public_keys on the server, which only ever contains PEM-encoded public keys, never private keys or derived secrets.
+
+#### 4.1.4 Results and Evidence
+
+The content field is an opaque hex blob (nonce plus AES-GCM ciphertext and tag), not readable plaintext. The server has no private key or derived shared secret available anywhere in its state, so it has no way to decrypt the content even with full access to its own memory and logs.
+
+**Evidence**:
+![alt text](image-7.png)
+
+
+#### 4.1.5 Mitigation
+
+This is the intended outcome of the E2EE design (Task 7 and Task 8), not a vulnerability to fix; it demonstrates the confidentiality property already implemented.
+
+---
+
+### 4.2 Attack 2: Integrity Bypass Attempt
+
+#### 4.2.1 Objective
+
+Determine whether a modified ciphertext is accepted and decrypted by the recipient.
+
+#### 4.2.2 Attack Setup 
+
+A captured content hex string is manually altered (a small script or manual byte flip on the ciphertext portion) before being delivered to the recipient's decrypt path.
+
+#### 4.2.3 Attack Execution
+
+1. A message is encrypted normally by the sender.
+2. One byte of the ciphertext is flipped before transmission, simulating an active attacker modifying the message in transit.
+3. The tampered message is sent to the recipient as usual.
+
+#### 4.2.4 Results and Evidence
+
+Decryption fails, since AES-GCM's authentication tag no longer matches the altered ciphertext. The client surfaces this as a decryption failure rather than silently returning corrupted plaintext.
+
+**Evidence**:
+![alt text](image-6.png)
+
+#### 4.2.5 Mitigation
+
+Already mitigated by AES-GCM's built-in authentication tag; no further changes needed.
+
+---
+
+## 5. Performance Evaluation
+Rather than micro-benchmarking individual cryptographic calls in isolation, this section describes where E2EE introduces cost into the existing message flow and reasons about its impact qualitatively.
+
+**Analysis**:
+E2EE adds cost at two points in the message lifecycle. First, key establishment: the first time two users message each other in a session, one extra round trip to the server occurs to fetch the peer's public key (GET_KEY), followed by a local ECDH computation and an HKDF derivation. This only happens once per peer per session, since the result is cached in session_keys; every subsequent message between the same two users in that session reuses the cached key and pays no further key-exchange cost. Second, per-message cost: every send now includes generating a random nonce and running the message through AES-256-GCM before it reaches the existing MAC and socket-send logic, and every receive reverses that with a GCM decrypt before the message is displayed.
+
+Both of these operations are standard, well-optimized primitives (P-256 ECDH and AES-GCM are both hardware-accelerated on most modern CPUs) operating on small inputs, short text messages and single elliptic-curve points, so in practice they add negligible, sub-millisecond overhead compared to the cost that already dominates this application: the network round trip through the TCP socket and the existing PBKDF2/TOTP-based authentication flow. The one-time per-peer key exchange cost is the only part of this that could be noticeable at all, and only on the very first message exchanged with a new peer in a session.
+
+**Limitations**
+this analysis is qualitative rather than measured; if quantitative numbers are required, a standalone timing script exercising these same primitives independently of the client/server would be the way to get them without instrumenting the application itself.
+
+---
+
+## 6. Lessons Learned
+
+### 6.1 Technical Insights
+
+1. **Ephemeral keys need explicit lifecycle management**: Generating a new ECDH key pair on login is straightforward, but making that meaningful for forward secrecy required deliberately clearing the old key and cached shared keys on every path that ends a session, expiry, and manual logout, rather than just on the "main" login/logout flow.
+2. **A background thread is a different concurrency model than request/response**: Pushing session warnings and expiry proactively (rather than only on the client's next command) required a dedicated monitor thread reading and writing shared server state (last_activity, warned_users) concurrently with the per-connection handler threads, which is a different failure mode than the request-triggered version initially tried.
+3. **Timing bugs are easy to introduce silently**: An early version of the session-warning logic reset the activity timestamp before calculating remaining time from it, which produced two different, self-contradictory time values in a single response, a bug that only showed up when actually reading the terminal output carefully, not from the code looking wrong on its own.
+4. **Authenticated encryption gives you integrity for free**: Layering the existing HMAC on top of AES-GCM ended up being partially redundant, since GCM's own authentication tag already detects tampering, worth noting since it's not something the initial design accounted for.
+
+
+### 6.2 Security Principles
+<!-- How do your implementations relate to fundamental security principles? -->
+
+**Applied Principles**:
+- **Defense in Depth**: Message integrity is checked twice, once by GCM's authentication tag during decryption, and again by the pre-existing HMAC layer, so a failure in one does not remove the other.
+- **Least Privilege**: The server is only ever given what it needs to route messages and broker key exchange, public keys and ciphertext, and is structurally unable to hold a private key or a derived shared secret.
+- **Fail Secure**: A failed key lookup, failed decryption, or expired session all fail into a safe state (message not sent, "DECRYPTION FAILED" shown, forced re-login) rather than falling back to an insecure default like sending plaintext or extending a session automatically.
+- **Economy of Mechanism**: Session key derivation is cached per peer per session rather than re-run on every message, keeping the common case (repeated messages to the same peer) simple and cheap without changing the security guarantees.
+
+---
+
+## 7. Conclusion
+
+### 7.1 Summary of Achievements
+
+This assignment added end-to-end encryption to SecureText using ECDH (P-256) for key agreement, HKDF-SHA256 for key derivation, and AES-256-GCM for authenticated message encryption, so that message content is no longer visible to or recoverable by the server. Session management was extended with an automatic, proactively-pushed 30-minute inactivity timeout, a 5-minute warning, forced re-authentication, and cleanup of session-specific key material on both expiry and manual logout, giving each login session a distinct, non-reusable set of cryptographic keys.
+
+### 7.2 Security and Privacy Posture Assessment
+
+The core E2EE goal is met: the server can be fully inspected, database, memory, and logs, and never contains anything beyond public keys and ciphertext. Session expiry and per-login key rotation provide forward secrecy in the sense that a leaked session's key cannot be used to decrypt messages from a different session.
+
+**Remaining Vulnerabilities**:
+- **No message replay protection**: A captured, valid encrypted message (ciphertext plus MAC) can be resent later and will still pass MAC verification and decrypt successfully if the session key hasn't rotated, since nothing binds a message to a specific point in time or sequence.
+- **No non-repudiation**: The MAC uses a key shared by both communicating parties, so either party could construct a message and attribute it to the other; there is no signature or per-user proof of authorship independent of the shared key.
+- **Metadata is still exposed**: Even with content encrypted, the server still sees who is messaging whom and when, so traffic analysis is possible even though message content is not.
+
+**Suggest an Attack**: An attacker who compromises the server process while a session is active could combine the visible metadata (sender, recipient, timestamp) with a captured ciphertext to replay that exact message to the recipient at a later time, and the recipient's client would accept and decrypt it as if newly sent.
+
+### 7.3 Future Improvements
+
+1. **Sequence numbers or timestamps bound into the AEAD associated data**: would let the recipient detect and reject a replayed message rather than accepting it as new.
+2. **Per-message ratcheting** (e.g. a Double Ratchet-style scheme): would provide forward secrecy at the level of individual messages rather than only per login session, so that leaking one message's key wouldn't expose the entire session's earlier messages.
+
+## 8. References
+
+[1] cryptography.io. "Elliptic Curve Diffie-Hellman (ECDH) Key Exchange." https://cryptography.io/en/latest/hazmat/primitives/asymmetric/ec/
+
+[2] cryptography.io. "AES-GCM (AESGCM)." https://cryptography.io/en/latest/hazmat/primitives/aead/
+
+[3] cryptography.io. "HKDF (HMAC-based Key Derivation Function)." https://cryptography.io/en/latest/hazmat/primitives/key-derivation-functions/#cryptography.hazmat.primitives.kdf.hkdf.HKDF
+
+[4] Krawczyk, H. and Eronen, P. "RFC 5869: HMAC-based Extract-and-Expand Key Derivation Function (HKDF)." IETF, 2010. https://www.rfc-editor.org/rfc/rfc5869
+
+[5] NIST. "SP 800-56A Rev. 3: Recommendation for Pair-Wise Key-Establishment Schemes Using Discrete Logarithm Cryptography." 2018. https://csrc.nist.gov/pubs/sp/800/56/a/r3/final
+
+[6] NIST. "SP 800-38D: Recommendation for Block Cipher Modes of Operation: Galois/Counter Mode (GCM) and GMAC." 2007. https://csrc.nist.gov/pubs/sp/800/38/d/final
+
+[7] Certicom Research. "SEC 2: Recommended Elliptic Curve Domain Parameters" (defines secp256r1 / P-256). https://www.secg.org/sec2-v2.pdf
+
+[8] OWASP. "Session Management Cheat Sheet." https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html
+
+---
+
+## Submission Checklist
+
+Before submitting, ensure you have:
+
+- [ ] **Complete Report**: All sections filled out with sufficient detail
+- [ ] **Evidence**: Screenshots, logs, and demonstrations included
+- [ ] **Code**: Well-named(based on task and whether it is an attack or a fix) and well-commented and organized in your GitHub repository deliverable directory of the corresponding assignment
+- [ ] **Tests**: Security and functionality tests implemented after fix
+- [ ] **GitHub Link**: Repository link included in report and Brightspace submission
+- [ ] **Academic Integrity**: All sources properly cited, work is your own
+- [ ] **AI Disclosure**: `GENAI.md` included in deliverables, disclosing any AI use
+
+---
+
+**Submission Instructions**:
+1. Save this report as PDF: `[StudentID]_Assignment[X]_Report.pdf`
+2. Submit PDF to Brightspace
+3. Include your private GitHub repository link in the Brightspace submission comments
+4. Ensure your repository is private until after course completion otherwise you'll get zero grade
+
+**Final Notes**:
+- Disclose AI use in a `GENAI.md` file in your deliverables (prompts used, which files AI touched). See the Academic Integrity section of the root README.
+- Be ready to explain any code you submit. If you can't explain it, don't submit it.
+- Be honest about limitations and challenges
+- Focus on demonstrating understanding, not just working code
+- Quality over quantity: depth of analysis is more important than length
+- Proofread for clarity and technical accuracy
+
+Good luck!
